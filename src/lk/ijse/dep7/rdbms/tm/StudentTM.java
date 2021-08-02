@@ -7,15 +7,13 @@ import java.io.Serializable;
 public class StudentTM implements Serializable {
     private String id;
     private String name;
-    private ObservableList<String> contact;
 
     public StudentTM() {
     }
 
-    public StudentTM(String id, String name, ObservableList<String> contact) {
+    public StudentTM(String id, String name) {
         this.id = id;
         this.name = name;
-        this.contact = contact;
     }
 
     public String getId() {
@@ -34,20 +32,11 @@ public class StudentTM implements Serializable {
         this.name = name;
     }
 
-    public ObservableList<String> getContact() {
-        return contact;
-    }
-
-    public void setContact(ObservableList<String> contact) {
-        this.contact = contact;
-    }
-
     @Override
     public String toString() {
         return "StudentTM{" +
                 "id='" + id + '\'' +
                 ", name='" + name + '\'' +
-                ", contact=" + contact +
                 '}';
     }
 }
