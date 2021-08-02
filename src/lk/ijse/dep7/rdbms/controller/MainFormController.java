@@ -252,12 +252,17 @@ public class MainFormController {
 
     public void btnAdd_OnAction(ActionEvent actionEvent) {
         if (txtContact.getText().matches("0\\d{2}-\\d{7}")) {
+
+            if (lstContact.getItems().contains(txtContact.getText())) {
+                new Alert(Alert.AlertType.ERROR, "Contact number exist").show();
+                return;
+            }
             lstContact.getItems().add(txtContact.getText());
             txtContact.clear();
             btnAdd.setText("Add");
             txtContact.requestFocus();
         } else {
-            new Alert(Alert.AlertType.ERROR, "Invalid contact number");
+            new Alert(Alert.AlertType.ERROR, "Invalid contact number").show();
         }
     }
 
