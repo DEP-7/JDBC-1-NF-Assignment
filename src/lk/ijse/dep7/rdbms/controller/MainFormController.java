@@ -10,6 +10,7 @@ import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.util.Callback;
 import lk.ijse.dep7.rdbms.tm.StudentTM;
 
+import java.sql.*;
 import java.util.Optional;
 
 public class MainFormController {
@@ -24,6 +25,7 @@ public class MainFormController {
     public Button btnEdit;
     public Button btnNew;
     public Button btnAdd;
+    private Connection connection;
 
     public void initialize(){
         btnSave.setDefaultButton(true);
@@ -43,18 +45,62 @@ public class MainFormController {
                     public Button getValue() {
                         Button remove = new Button("Remove");
                         remove.setOnAction(event -> {
-                            // TODO: Remove from db
 
-                            if (true) {
-                                tblStudents.getItems().remove(param.getValue());
+                            try {
+                                Statement stmt = connection.createStatement();
+                                String sql = "DELETE FROM student WHERE id = '" + param.getValue().getId() + "'";
+                                int affectedRows = stmt.executeUpdate(sql);
+
+                                if (affectedRows == 1) {
+                                    tblStudents.getItems().remove(param.getValue());
+                                    tblStudents.refresh();
+                                    btnNew.fire();
+                                } else {
+                                    new Alert(Alert.AlertType.INFORMATION, "Failed to delete the student, retry").show();
+                                    remove.requestFocus();
+                                }
+                            } catch (SQLException e) {
+                                e.printStackTrace();
+                                new Alert(Alert.AlertType.INFORMATION, "Failed to delete the student, retry").show();
                             }
                         });
-
                         return remove;
                     }
                 };
             }
         });
+
+        try {
+            connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/dep7", "root", "mysql");
+        } catch (SQLException e) {
+            new Alert(Alert.AlertType.ERROR, "Failed to connect to the database server").showAndWait();
+            e.printStackTrace();
+            System.exit(1);
+        }
+
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            try {
+                if (!connection.isClosed()) {
+                    connection.close();
+                }
+            } catch (SQLException throwable) {
+                throwable.printStackTrace();
+            }
+        }));
+
+        try {
+            Statement stmt = connection.createStatement();
+            ResultSet rst = stmt.executeQuery("SELECT * FROM student");
+
+            while (rst.next()) {
+                String id = rst.getString("id");
+                String name = rst.getString("name");
+
+                tblStudents.getItems().add(new StudentTM(id, name));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
 
         ChangeListener<String> listener = (observable, oldValue, newValue) -> {
             String id = txtId.getText();
@@ -73,10 +119,20 @@ public class MainFormController {
                 txtId.setText(newValue.getId());
                 txtName.setText(newValue.getName());
                 lstContact.getItems().clear();
+                txtContact.clear();
                 txtId.setDisable(true);
                 btnSave.setText("Update");
 
-                //TODO: update contact list using db
+                try {
+                    Statement stmt = connection.createStatement();
+                    ResultSet rst = stmt.executeQuery("SELECT contact FROM contacts WHERE student_id = '" + newValue.getId() + "'");
+
+                    while (rst.next()) {
+                        lstContact.getItems().add(rst.getString("contact"));
+                    }
+                } catch (SQLException e) {
+                    e.printStackTrace();
+                }
             } else {
                 btnSave.setText("Save");
             }
@@ -85,6 +141,28 @@ public class MainFormController {
         lstContact.getSelectionModel().selectedItemProperty().addListener((observable, oldValue, newValue) -> {
             btnEdit.setDisable(newValue == null);
             btnRemove.setDisable(newValue == null);
+        });
+
+        txtSearch.textProperty().addListener((observable, oldValue, newValue) -> {
+            try {
+                String sql = "SELECT * FROM customer WHERE " +
+                        "id LIKE '%"+newValue+
+                        "%' OR nic LIKE '%"+newValue+
+                        "%' OR name LIKE '%"+newValue+
+                        "%' OR address LIKE '%"+newValue+"%'";
+                PreparedStatement preparedStatement = connection.prepareStatement(sql);
+                ResultSet resultSet = preparedStatement.executeQuery();
+                tblStudents.getItems().clear();
+
+                while (resultSet.next()) {
+                    String id = resultSet.getString("id");
+                    String name = resultSet.getString("name");
+                    tblStudents.getItems().add(new StudentTM(id, name));
+                }
+            } catch (SQLException e) {
+                new Alert(Alert.AlertType.ERROR,"Failed to fetch the data, try again").show();
+                e.printStackTrace();
+            }
         });
     }
 
@@ -106,28 +184,68 @@ public class MainFormController {
 
         if (btnSave.getText().equals("Save")) {
 
-            //TODO: save in db
+            try {
+                PreparedStatement preparedStatement = connection.prepareStatement("SELECT id FROM student WHERE id = '" + id + "'");
+                String sql;
 
-            if (true) {
-                tblStudents.getItems().add(new StudentTM(id, name));
-                btnNew.fire();
-            } else {
-                new Alert(Alert.AlertType.INFORMATION, "Failed to save the student").show();
-                btnSave.requestFocus();
+                if (preparedStatement.executeQuery().next()) {
+                    new Alert(Alert.AlertType.INFORMATION, "Student id already exist").show();
+                    txtId.requestFocus();
+                    return;
+                }
+
+                sql = "INSERT INTO student VALUES ('%s', '%s')";
+                sql = String.format(sql, id, name);
+                preparedStatement = connection.prepareStatement(sql);
+                int affectedRows = preparedStatement.executeUpdate();
+
+                if (affectedRows == 1) {
+                    preparedStatement = connection.prepareStatement("INSERT INTO contacts VALUES ('" + id + "', ?)");
+
+                    for (String contact : contacts) {
+                        preparedStatement.setString(1, contact);
+                        preparedStatement.executeUpdate();
+                    }
+
+                    tblStudents.getItems().add(new StudentTM(id, name));
+                    btnNew.fire();
+                } else {
+                    new Alert(Alert.AlertType.INFORMATION, "Failed to save the student").show();
+                    btnSave.requestFocus();
+                }
+            } catch (SQLException e) {
+                e.printStackTrace();
+                new Alert(Alert.AlertType.ERROR, "Failed to save the student, retry").show();
             }
         }else{
 
-            //TODO: update db
+            try {
+                PreparedStatement preparedStatement = connection.prepareStatement("UPDATE student SET name = ? WHERE id = ?");
+                preparedStatement.setString(1, name);
+                preparedStatement.setString(2, id);
+                int affectedRows = preparedStatement.executeUpdate();
+                Statement stmt = connection.createStatement();
+                stmt.executeUpdate("DELETE FROM contacts WHERE student_id = '" + id + "'");
+                preparedStatement = connection.prepareStatement("INSERT INTO contacts VALUES ('" + id + "', ?)");
 
-            if (true) {
-                StudentTM selectedStudent = tblStudents.getSelectionModel().getSelectedItem();
+                for (String contact : contacts) {
+                    preparedStatement.setString(1, contact);
+                    affectedRows += preparedStatement.executeUpdate();
+                }
 
-                selectedStudent.setName(name);
-                tblStudents.refresh();
-                btnNew.fire();
-            } else {
+                if (affectedRows > 0) {
+                    StudentTM selectedStudent = tblStudents.getSelectionModel().getSelectedItem();
+
+                    selectedStudent.setName(name);
+                    tblStudents.refresh();
+                    btnNew.fire();
+                } else {
+                    new Alert(Alert.AlertType.INFORMATION, "Failed to update the student, retry").show();
+                    btnSave.requestFocus();
+                }
+            } catch (SQLException e) {
+                e.printStackTrace();
                 new Alert(Alert.AlertType.INFORMATION, "Failed to update the student, retry").show();
-                btnSave.requestFocus();
             }
         }
     }
